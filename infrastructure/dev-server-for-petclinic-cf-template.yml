@@ -1,21 +1,18 @@
-AWSTemplateVersion: 2010-09-09
-
+AWSTemplateFormatVersion: 2010-09-09
 Description: >
   This cloudformation template prepares development environment for petclinic microservices app
-  User needs to select appropriate key name when launching the template
-
-Paremater:
-  KeypairName:
+  User needs to select appropiate key name when launching the template.
+Parameters:
+  KeyPairName:
     Description: Enter the name of your Key Pair for SSH connection
     Type: AWS::EC2::KeyPair::KeyName
-    ConstrainDescription: Must be one of the existing EC2 keypair
-
+    ConstraintDescription: Must be one of the existing EC2 keypair
 Resources:
   PetclinicSG:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Enable HTTP and SSH for petclinic microservices
-        SecurityGroupIngress:
+        SecurityGroupIngress: 
           - IpProtocol: tcp
             FromPort: 22
             ToPort: 22
@@ -23,7 +20,7 @@ Resources:
           - IpProtocol: tcp
             FromPort: 80
             ToPort: 80
-            CidrIp: 0.0.0.0/0  
+            CidrIp: 0.0.0.0/0
           - IpProtocol: tcp
             FromPort: 8888
             ToPort: 8888
@@ -45,8 +42,8 @@ Resources:
             ToPort: 8083
             CidrIp: 0.0.0.0/0
           - IpProtocol: tcp
-            FromPort: 8880
-            ToPort: 8880
+            FromPort: 8080
+            ToPort: 8080
             CidrIp: 0.0.0.0/0
           - IpProtocol: tcp
             FromPort: 9411
@@ -68,3 +65,43 @@ Resources:
             FromPort: 9091
             ToPort: 9091
             CidrIp: 0.0.0.0/0
+  PetClinicLT:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: ami-04d29b6f966df1537
+        InstanceType: t2.medium
+        KeyName: !Ref KeyPairName
+        SecurityGroupIds:
+          - !GetAtt PetclinicSG.GroupId
+        UserData:
+          Fn::Base64: |
+            #! /bin/bash
+            yum update -y
+            hostnamectl set-hostname petclinic-dev-server
+            amazon-linux-extras install docker -y
+            systemctl start docker
+            systemctl enable docker
+            usermod -a -G docker ec2-user
+            curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" \
+            -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+            yum install git -y
+            yum install java-11-amazon-corretto -y
+            git clone https://github.com/davidclarusway/petclinic-microservices.git # Insert the link to your own repo
+            cd petclinic-microservices/
+            git fetch
+            git checkout dev
+  PetClinicServer:
+    Type: AWS::EC2::Instance
+    Properties: 
+      LaunchTemplate:
+        LaunchTemplateId: !Ref PetClinicLT
+        Version: !GetAtt PetClinicLT.LatestVersionNumber
+      Tags:
+        - Key: Name
+          Value: !Sub Petclinic App Dev Server ${AWS::StackName}
+Outputs:
+  PetClinicDNSName:
+    Description: Petclinic App Url
+    Value: !GetAtt PetClinicServer.PublicDnsName
