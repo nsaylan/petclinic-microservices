@@ -1,107 +1,43 @@
-AWSTemplateFormatVersion: 2010-09-09
-Description: >
-  This cloudformation template prepares development environment for petclinic microservices app
-  User needs to select appropriate key name when launching the template.
-Parameters:
-  KeyPairName:
-    Description: Enter the name of your Key Pair for SSH connection
-    Type: AWS::EC2::KeyPair::KeyName
-    ConstraintDescription: Must be one of the existing EC2 keypair
-Resources:
-  PetclinicSG:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-    GroupDescription: Enable HTTP and SSH for petclinic microservices
-    SecurityGroupIngress: 
-      - IpProtocol: tcp
-        FromPort: 22
-        ToPort: 22
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 80
-        ToPort: 80
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 8888
-        ToPort: 8888
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 8761
-        ToPort: 8761
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 8081
-        ToPort: 8081
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 8082
-        ToPort: 8082
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 8083
-        ToPort: 8083
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 8080
-        ToPort: 8080
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 9411
-        ToPort: 9411
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 9090
-        ToPort: 9090
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 7979
-        ToPort: 7979
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 3000
-        ToPort: 3000
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: 9091
-        ToPort: 9091
-        CidrIp: 0.0.0.0/0
-  PetClinicLT:
-    Type: AWS::EC2::LaunchTemplate
-    Properties:
-      LaunchTemplateData:
-        ImageId: ami-04d29b6f966df1537
-        InstanceType: t2.medium
-        KeyName: !Ref KeyPairName
-        SecurityGroupIds:
-          - !GetAtt PetclinicSG.GroupId
-        UserData:
-          Fn::Base64: |
-            #! /bin/bash
-            yum update -y
-            hostnamectl set-hostname petclinic-dev-server
-            amazon-linux-extras install docker -y
-            systemctl start docker
-            systemctl enable docker
-            usermod -a -G docker ec2-user
-            curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" \
-            -o /usr/local/bin/docker-compose
-            chmod +x /usr/local/bin/docker-compose
-            yum install git -y
-            yum install java-11-amazon-corretto -y
-            git clone https://github.com/davidclarusway/petclinic-microservices.git # Insert the link to your own repo
-            cd petclinic-microservices/
-            git fetch
-            git checkout dev
-  PetClinicServer:
-    Type: AWS::EC2::Instance
-    Properties: 
-      LaunchTemplate:
-        LaunchTemplateId: !Ref PetClinicLT
-        Version: !GetAtt PetClinicLT.LatestVersionNumber
-      Tags:
-        - Key: Name
-          Value: !Sub Petclinic App Dev Server ${AWS::StackName}
-Outputs:
-  PetClinicDNSName:
-    Description: Petclinic App Url
-    Value: !GetAtt PetClinicServer.PublicDnsName
+#! /bin/bash
+# update os
+yum update -y
+# set server hostname as jenkins-server
+hostnamectl set-hostname jenkins-server
+# install git
+yum install git -y
+# install java 11
+yum install java-11-amazon-corretto -y
+# install jenkins
+wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat/jenkins.repo
+rpm --import https://pkg.jenkins.io/redhat/jenkins.io.key
+yum install jenkins -y
+systemctl start jenkins
+systemctl enable jenkins
+# install docker
+amazon-linux-extras install docker -y
+systemctl start docker
+systemctl enable docker
+usermod -a -G docker ec2-user
+usermod -a -G docker jenkins
+# configure docker as cloud agent for jenkins
+cp /lib/systemd/system/docker.service /lib/systemd/system/docker.service.bak
+sed -i 's/^ExecStart=.*/ExecStart=\/usr\/bin\/dockerd -H tcp:\/\/127.0.0.1:2375 -H unix:\/\/\/var\/run\/docker.sock/g' /lib/systemd/system/docker.service
+systemctl daemon-reload
+systemctl restart docker
+systemctl restart jenkins
+# install docker compose
+curl -L "https://github.com/docker/compose/releases/download/1.26.2/docker-compose-$(uname -s)-$(uname -m)" \
+-o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+# uninstall aws cli version 1
+rm -rf /bin/aws
+# install aws cli version 2
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+# install python 3
+yum install python3 -y
+# install ansible
+pip3 install ansible
+# install boto3
+pip3 install boto3
